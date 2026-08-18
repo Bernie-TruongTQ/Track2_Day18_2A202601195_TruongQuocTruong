@@ -37,6 +37,7 @@ LATENCY_PROFILES = {
 
 DUP_RATE = 0.05  # ~5% of request_ids reappear (retry pattern)
 DAYS_SPAN = 7    # timestamps spread across this many UTC days
+DELTA_TARGET_FILE_SIZE = 1024 * 1024  # avoids large-file reopen failures on WSL DrvFS/9p
 
 
 def _sample_latency(model: str, completion_tokens: int) -> int:
@@ -86,7 +87,12 @@ def main(n_rows: int = 200_000) -> None:
     df = pl.DataFrame(rows)
     out = path("bronze", "llm_calls_raw")
     reset(out)
-    write_deltalake(out, df.to_arrow(), mode="overwrite")
+    write_deltalake(
+        out,
+        df.to_arrow(),
+        mode="overwrite",
+        target_file_size=DELTA_TARGET_FILE_SIZE,
+    )
     n_unique = df.select(pl.col("request_id").n_unique()).item()
     print(
         f"Wrote {n_rows:,} rows → {out}\n"

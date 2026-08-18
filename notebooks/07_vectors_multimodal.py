@@ -58,6 +58,7 @@ BLOB_DIR = Path(ROOT) / "blobs"
 blob_files = sorted(BLOB_DIR.glob("*.bin"))
 blobs = [f.read_bytes() for f in blob_files]
 N = len(blobs)
+DELTA_TARGET_FILE_SIZE = 1024 * 1024  # avoids large-file reopen failures on WSL DrvFS/9p
 
 inline_tbl = pa.table({
     "doc_id": pa.array(range(N), pa.int64()),
@@ -72,7 +73,8 @@ pointer_tbl = pa.table({
 
 INLINE, POINTER = path("scratch", "media_inline"), path("scratch", "media_pointer")
 reset(INLINE, POINTER)
-write_deltalake(INLINE, inline_tbl, mode="overwrite")
+write_deltalake(INLINE, inline_tbl.to_batches(max_chunksize=10), mode="overwrite",
+                target_file_size=DELTA_TARGET_FILE_SIZE)
 write_deltalake(POINTER, pointer_tbl, mode="overwrite")
 
 print(f"inline table : {human(du(INLINE)):>10}")

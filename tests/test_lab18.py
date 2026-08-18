@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from deltalake import DeltaTable, write_deltalake  # noqa: E402
 
 import generate_ai_data as gen  # noqa: E402
+import generate_data_lite as gen_lite  # noqa: E402
 import lakehouse as lh  # noqa: E402
 
 
@@ -123,6 +124,28 @@ def test_trajectories_have_multi_step_sessions():
         steps[r["session_id"]] = steps.get(r["session_id"], 0) + 1
     assert max(steps.values()) > 1, "trajectories must be multi-step"
     assert {"ok", "error"} & {r["status"] for r in traj}
+
+
+def test_lite_generator_bounds_delta_file_size(monkeypatch, tmp_path):
+    """Bulk local writes must avoid one large Parquet file on WSL DrvFS."""
+    calls = []
+    monkeypatch.setattr(gen_lite, "path", lambda *parts: str(tmp_path / "bronze" / parts[-1]))
+    monkeypatch.setattr(gen_lite, "reset", lambda *paths: None)
+    monkeypatch.setattr(gen_lite, "write_deltalake",
+                        lambda *args, **kwargs: calls.append(kwargs))
+
+    gen_lite.main(10)
+
+    assert calls and calls[0]["target_file_size"] == 1024 * 1024
+
+
+def test_multimodal_inline_write_bounds_delta_file_size():
+    """Inline multimodal blobs must be split for WSL DrvFS compatibility."""
+    source = (ROOT / "notebooks" / "07_vectors_multimodal.py").read_text()
+    inline_call = source[source.index("write_deltalake(INLINE"):]
+    inline_call = inline_call[:inline_call.index("write_deltalake(POINTER")]
+    assert "target_file_size" in inline_call
+    assert "to_batches(max_chunksize=10)" in inline_call
 
 
 # ── format behaviours the notebooks teach ──────────────────────────────────
